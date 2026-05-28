@@ -8,6 +8,7 @@ import cors from 'cors';
 import uploadRoute from './routes/upload';
 import analyzeRoute from './routes/analyze';
 import simulateRoute from './routes/simulate';
+import optimizeBudgetRoute from './routes/optimizeBudget';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -34,6 +35,7 @@ app.get('/', (_req, res) => {
 app.use('/upload', uploadRoute);
 app.use('/analyze', analyzeRoute);
 app.use('/simulate', simulateRoute);
+app.use('/optimize-budget', optimizeBudgetRoute);
 
 // ── Start ───────────────────────────────────────────────────
 app.listen(PORT, () => {
@@ -42,6 +44,7 @@ app.listen(PORT, () => {
   console.log('  POST /upload    — Upload & parse CSV');
   console.log('  POST /analyze   — Full analytics pipeline');
   console.log('  POST /simulate  — Savings simulator\n');
+  console.log('  POST /optimize-budget — Smart budget optimizer');
 });
 
 export default app;
