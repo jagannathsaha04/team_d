@@ -1,0 +1,17 @@
+{
+  "transactions": [
+    {
+      "date": "2026-05-01",
+      "merchant": "Swiggy",
+      "amount": 450,
+      "category": "Food"
+    },
+    {
+      "date": "2026-05-02",
+      "merchant": "Uber",
+      "amount": 220,
+      "category": "Travel"
+    }
+  ]
+}
+

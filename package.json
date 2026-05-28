@@ -1,0 +1,31 @@
+{
+  "name": "spendsmart-ai",
+  "version": "1.0.0",
+  "description": "SpendSmart AI — Intelligent personal finance analytics backend",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "npx ts-node src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "multer": "^2.1.1",
+    "papaparse": "^5.5.3"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.1.0",
+    "@types/node": "^25.9.1",
+    "@types/papaparse": "^5.5.2",
+    "nodemon": "^3.1.14",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "transactions": [
+    {
+      "date": "2026-05-01",
+      "merchant": "Swiggy",
+      "amount": 450,
+      "category": "Food"
+    },
+    {
+      "date": "2026-05-02",
+      "merchant": "Netflix",
+      "amount": 650,
+      "category": "Entertainment"
+    }
+  ],
+  "reductions": {
+    "foodReduction": 20,
+    "travelReduction": 10,
+    "entertainmentReduction": 25
+  }
+}
