@@ -1,109 +1,169 @@
-# SpendSmart AI 🧠💰
+# SpendSmart AI Backend
 
-Intelligent personal finance analytics backend — parses transaction CSVs, detects spending patterns, generates actionable insights, and simulates savings.
+This backend service powers SpendSmart AI. It accepts transaction CSV uploads, validates and normalizes data, performs spending analytics, detects patterns, generates actionable insights, calculates a financial health score, and simulates savings.
 
-## Tech Stack
+## Requirements
 
-- **Runtime:** Node.js + TypeScript
-- **Framework:** Express
-- **CSV Parsing:** PapaParse
-- **File Upload:** Multer (in-memory)
-- **Storage:** None — fully in-memory processing
+- Node.js 20+ (recommended)
+- npm
 
-## Quick Start
+## Install
 
 ```bash
+cd spendsmart-ai
 npm install
-npm run dev      # starts on http://localhost:3000
+```
+
+## Run Locally
+
+```bash
+cd spendsmart-ai
+npm run dev
+```
+
+The backend listens on `http://localhost:3000` by default.
+
+## Build
+
+```bash
+cd spendsmart-ai
+npm run build
+npm start
 ```
 
 ## API Endpoints
 
 ### `GET /`
-Health check — returns server info and available endpoints.
+Health check endpoint. Returns service metadata and available routes.
 
 ### `POST /upload`
-Upload and parse a CSV file.
+Upload and parse a transaction CSV file.
 
-**Request:** `multipart/form-data` with field `file` (CSV)
+- **Request:** `multipart/form-data` with field `file`
+- **Expected CSV columns:** `Date`, `Merchant`, `Amount`, `Category`
+- **Response:**
 
-**CSV columns:** `Date`, `Merchant`, `Amount`, `Category`
-
-**Response:**
 ```json
 {
   "success": true,
-  "transactions": [...],
+  "transactions": [
+    { "date": "2024-01-02T00:00:00.000Z", "merchant": "swiggy", "amount": 450, "category": "food" }
+  ],
   "errors": [],
   "rowCount": 30
 }
 ```
 
 ### `POST /analyze`
-Run full analytics pipeline on parsed transactions.
+Analyze parsed transactions through the SpendSmart pipeline.
 
-**Request:** `application/json`
+- **Request:** `application/json`
+
 ```json
 { "transactions": [...] }
 ```
 
-**Response:**
+- **Response:**
+
 ```json
 {
-  "analytics": { "totalSpend", "categoryBreakdown", "weeklySpending", "topMerchants" },
+  "totalSpend": 22566,
+  "categoryBreakdown": { "food": 6200, "transport": 2950 },
+  "weeklySpending": { "2024-W01": 4200, "2024-W02": 5120 },
   "patterns": [...],
   "insights": [...],
-  "healthScore": { "score": 62, "label": "Moderate" }
+  "healthScore": { "score": 66, "label": "Moderate" }
 }
 ```
 
 ### `POST /simulate`
-Simulate savings with percentage reductions.
+Run savings projections based on user reduction goals.
 
-**Request:** `application/json`
+- **Request:** `application/json`
+
 ```json
 {
   "transactions": [...],
-  "reductions": {
-    "foodReduction": 20,
-    "travelReduction": 15,
-    "entertainmentReduction": 25
-  }
+  "foodReduction": 0.2,
+  "travelReduction": 0.15,
+  "entertainmentReduction": 0.25
 }
 ```
 
-**Response:**
+- **Response:**
+
 ```json
 {
-  "simulation": { "monthlySavings": 3086.5, "yearlySavings": 37038 }
+  "success": true,
+  "monthlySavings": 15.57,
+  "yearlySavings": 186.84,
+  "simulation": { "monthlySavings": 15.57, "yearlySavings": 186.84 },
+  "appliedReductions": { "foodReduction": 0.2, "travelReduction": 0.15, "entertainmentReduction": 0.25 }
 }
 ```
+
+## How the Backend Works
+
+1. **CSV Parsing & Validation** (`src/services/parser.ts`)
+   - Uses `PapaParse` to parse uploads in memory.
+   - Normalizes merchant and category text.
+   - Converts amounts to positive numbers and rounds to 2 decimals.
+   - Infers missing categories using a merchant-to-category fallback map.
+
+2. **Analytics** (`src/services/analytics.ts`)
+   - Computes total spend, transaction count, average transaction amount, and date range.
+   - Builds category spend totals.
+   - Aggregates weekly spend by ISO week.
+   - Ranks top merchants by spend.
+
+3. **Pattern Detection** (`src/services/analytics.ts`)
+   - Detects overspending categories.
+   - Flags weekend spending spikes.
+   - Identifies frequent small spends and recurring/subscription-style merchant activity.
+
+4. **Insights** (`src/services/insights.ts`)
+   - Generates human-readable advice and savings estimates.
+   - Produces titles and descriptions for each detected pattern.
+
+5. **Health Score** (`src/services/scoring.ts`)
+   - Calculates a score from 0–100 based on essential spending, overspending signals, weekly consistency, and potential savings.
+
+6. **Savings Simulator** (`src/services/simulator.ts`)
+   - Applies percentage reductions to food, travel, and entertainment spend.
+   - Returns projected monthly and yearly savings.
 
 ## Project Structure
 
-```
-src/
-├── types/index.ts          # Shared TypeScript interfaces
-├── services/
-│   ├── parser.ts           # Step 1: CSV parsing & validation
-│   ├── analytics.ts        # Step 2+3: Analytics engine & pattern detection
-│   ├── insights.ts         # Step 4+5: Recommendation engine & savings estimation
-│   ├── scoring.ts          # Step 6: Financial health score (0-100)
-│   └── simulator.ts        # Step 7: Savings simulator
-├── routes/
-│   ├── upload.ts           # POST /upload
-│   ├── analyze.ts          # POST /analyze
-│   └── simulate.ts         # POST /simulate
-├── server.ts               # Express entry point
-└── test.ts                 # Integration test script
+```text
+spendsmart-ai/
+├── sample.csv
+├── src/
+│   ├── routes/
+│   │   ├── upload.ts
+│   │   ├── analyze.ts
+│   │   └── simulate.ts
+│   ├── services/
+│   │   ├── parser.ts
+│   │   ├── analytics.ts
+│   │   ├── insights.ts
+│   │   ├── scoring.ts
+│   │   └── simulator.ts
+│   ├── types/index.ts
+│   ├── server.ts
+│   └── test.ts
+├── package.json
+└── tsconfig.json
 ```
 
 ## Testing
 
+Run the integration test script to validate the full backend pipeline with the included sample CSV:
+
 ```bash
+cd spendsmart-ai
 npx ts-node src/test.ts
 ```
 
-## Sample CSV
+## Sample Data
 
-A `sample.csv` is included with 30 transactions across 7 categories for testing.
+The repository includes `spendsmart-ai/sample.csv` with 30 sample transactions across categories such as `food`, `transport`, `entertainment`, `shopping`, `groceries`, `utilities`, and `health`.

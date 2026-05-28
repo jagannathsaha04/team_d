@@ -15,28 +15,22 @@ const router = Router();
  * POST /simulate
  * Body: {
  *   transactions: Transaction[],
- *   reductions: { foodReduction, travelReduction, entertainmentReduction }
+ *   foodReduction?,
+ *   travelReduction?,
+ *   entertainmentReduction?,
+ *   reductions?: { foodReduction, travelReduction, entertainmentReduction }
  * }
- * Returns: { monthlySavings, yearlySavings }
+ * Returns: { success: true, monthlySavings, yearlySavings, simulation: { monthlySavings, yearlySavings } }
  */
 router.post('/', (req: Request, res: Response): void => {
   try {
-    const { transactions, reductions } = req.body;
+    const { transactions, reductions, foodReduction, travelReduction, entertainmentReduction } = req.body;
 
     // Validate transactions
     if (!Array.isArray(transactions) || transactions.length === 0) {
       res.status(400).json({
         success: false,
         error: 'Request body must contain a non-empty "transactions" array.',
-      });
-      return;
-    }
-
-    // Validate reductions object
-    if (!reductions || typeof reductions !== 'object') {
-      res.status(400).json({
-        success: false,
-        error: 'Request body must contain a "reductions" object with foodReduction, travelReduction, entertainmentReduction.',
       });
       return;
     }
@@ -52,18 +46,21 @@ router.post('/', (req: Request, res: Response): void => {
     // Build analytics first (simulator needs category breakdown)
     const analytics = analyzeTransactions(hydrated);
 
-    // Build simulator input
+    // Extract reductions supporting both nested and flat inputs
     const input: SimulatorInput = {
-      foodReduction: Number(reductions.foodReduction) || 0,
-      travelReduction: Number(reductions.travelReduction) || 0,
-      entertainmentReduction: Number(reductions.entertainmentReduction) || 0,
+      foodReduction: Number(foodReduction ?? reductions?.foodReduction ?? 0),
+      travelReduction: Number(travelReduction ?? reductions?.travelReduction ?? 0),
+      entertainmentReduction: Number(entertainmentReduction ?? reductions?.entertainmentReduction ?? 0),
     };
 
     // Run simulation
     const result = simulateSavings(input, analytics);
 
+    // Return both flat and nested keys to guarantee 100% compatibility with any client interface
     res.status(200).json({
       success: true,
+      monthlySavings: result.monthlySavings,
+      yearlySavings: result.yearlySavings,
       simulation: result,
       appliedReductions: input,
     });
