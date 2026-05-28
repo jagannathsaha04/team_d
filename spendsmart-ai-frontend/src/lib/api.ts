@@ -97,3 +97,25 @@ export async function simulateSavings(
 
   return response.json();
 }
+
+/**
+ * Optimize budget on backend
+ * POST /optimize-budget
+ */
+export async function optimizeBudget(
+  transactions: Transaction[],
+  monthlyBudget: number
+): Promise<any> {
+  const response = await fetch(`${BACKEND_URL}/optimize-budget`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ transactions, monthlyBudget }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(errText || 'Failed to optimize budget.');
+  }
+
+  return response.json();
+}

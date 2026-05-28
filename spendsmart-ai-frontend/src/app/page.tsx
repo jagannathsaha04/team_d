@@ -35,6 +35,7 @@ import {
   analyzeTransactions,
   simulateSavings,
   AnalyzeResponse,
+  optimizeBudget,
 } from '../lib/api';
 
 // Components
@@ -74,6 +75,9 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
+  const [monthlyBudget, setMonthlyBudget] = useState<string>('');
+  const [isOptimizing, setIsOptimizing] = useState<boolean>(false);
+  const [budgetResult, setBudgetResult] = useState<any | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [apiFallbackNotice, setApiFallbackNotice] = useState<boolean>(false);
   const reportRef = useRef<HTMLDivElement | null>(null);
@@ -124,6 +128,28 @@ export default function Home() {
       spread: 70,
       origin: { y: 0.6 }
     });
+  };
+
+  const handleOptimizeBudget = async () => {
+    if (!transactions || transactions.length === 0) return;
+    const budget = parseFloat(monthlyBudget as string);
+    if (Number.isNaN(budget) || budget <= 0) {
+      alert('Please enter a valid monthly budget amount');
+      return;
+    }
+
+    setIsOptimizing(true);
+    setBudgetResult(null);
+
+    try {
+      const res = await optimizeBudget(transactions, budget);
+      setBudgetResult(res);
+    } catch (err) {
+      console.error('Budget optimization failed', err);
+      alert('Failed to run budget optimizer.');
+    } finally {
+      setIsOptimizing(false);
+    }
   };
 
   // Upload Custom statement file
@@ -571,6 +597,22 @@ export default function Home() {
                       <span>Local Fallback Active</span>
                     </span>
                   )}
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={monthlyBudget}
+                      onChange={(e) => setMonthlyBudget(e.target.value)}
+                      placeholder="Monthly budget (₹)"
+                      className="w-36 px-3 py-1 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-xs text-zinc-700 dark:text-zinc-200"
+                    />
+                    <button
+                      onClick={handleOptimizeBudget}
+                      disabled={!transactions || isOptimizing}
+                      className="flex items-center gap-1 px-3 py-1 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-xs font-semibold text-zinc-600 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <span>{isOptimizing ? 'Optimizing...' : 'Optimize Budget'}</span>
+                    </button>
+                  </div>
                   <button
                     onClick={generatePDFReport}
                     disabled={!analyticsData || isGeneratingPdf}
@@ -589,6 +631,26 @@ export default function Home() {
               </header>
 
               <main className="p-8 space-y-8 max-w-6xl w-full mx-auto">
+                {budgetResult && (
+                  <div className="mb-6 p-4 border rounded-lg bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800">
+                    <h3 className="text-sm font-bold">Budget Optimizer</h3>
+                    <p className="text-xs text-zinc-500 mt-1">{budgetResult.message}</p>
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {budgetResult.recommendations && budgetResult.recommendations.length > 0 ? (
+                        budgetResult.recommendations.map((r: any, i: number) => (
+                          <div key={i} className="p-3 bg-zinc-50 dark:bg-zinc-800 rounded-lg border border-zinc-100 dark:border-zinc-700">
+                            <p className="text-xs font-semibold">{r.category.toUpperCase()}</p>
+                            <p className="text-sm mt-1">Reduce by <strong>{r.reductionPercent}%</strong></p>
+                            <p className="text-sm mt-1 font-bold">Savings: ₹{Number(r.savings).toLocaleString('en-IN')}</p>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="col-span-3 text-xs text-zinc-500">No recommendations available.</div>
+                      )}
+                    </div>
+                    <p className="text-xs text-zinc-400 mt-3">Deficit: ₹{Number(budgetResult.deficit).toLocaleString('en-IN')}</p>
+                  </div>
+                )}
                 <AnimatePresence mode="wait">
                   {/* TAB 1: OVERVIEW */}
                   {activeTab === 'dashboard' && (
