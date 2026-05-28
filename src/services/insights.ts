@@ -22,111 +22,118 @@ export function generateInsights(
 ): Insight[] {
   const insights: Insight[] = [];
   const totalSpend = analytics.aggregates.totalSpend;
+  const seen = new Set<string>();
+
+  function addInsight(insight: Omit<Insight, 'category'> & { category: string }) {
+    if (seen.has(insight.title)) return;
+    seen.add(insight.title);
+    insights.push(insight as Insight);
+  }
+
+  const reduce = (amount: number, pct: number) => Math.round(amount * (pct / 100));
+  const clampPct = (value: number) => Math.min(Math.max(value, 10), 30);
 
   for (const pattern of patterns) {
     switch (pattern.type) {
-      // ── Food / category overspending ──────────────────────
       case 'overspending': {
-        const cat = pattern.category ?? 'unknown';
+        const cat = pattern.category ?? 'other';
         const catSpend = analytics.categoryBreakdown[cat] ?? 0;
+        const pct = Math.min(30, Math.max(15, Math.round(pattern.data.metric / 2)));
+        const reduction = clampPct(pct);
+        const savings = reduce(catSpend, reduction);
+        const label = cat.toLowerCase();
 
-        if (cat.includes('food') || cat.includes('dining') || cat.includes('restaurant')) {
-          const reductionPct = 20;
-          const savings = Math.round(catSpend * (reductionPct / 100));
-          
-          insights.push({
-            title: `Reduce Food ordering by ${reductionPct}% → Save ₹${savings.toLocaleString('en-IN')}/month`,
-            description:
-              `Your food spending (₹${catSpend.toLocaleString('en-IN')}) represents ${pattern.data.metric}% ` +
-              `of your total budget. Because eating out and delivery are highly flexible, targeting a ` +
-              `${reductionPct}% reduction through home cooking or meal prepping is the most effective ` +
-              `way to claw back ₹${savings.toLocaleString('en-IN')} this month.`,
+        if (label.includes('food') || label.includes('dining') || label.includes('restaurant')) {
+          addInsight({
+            type: 'Overspending',
+            title: 'Food spending is too high',
+            description: `You spent ${pattern.data.metric}% on food. Cutting that by ${reduction}% could save around ₹${savings}/month.`,
             savingsEstimate: savings,
+            severity: pattern.severity,
             category: cat,
           });
-        } else if (cat.includes('travel') || cat.includes('transport') || cat.includes('fuel')) {
-          const reductionPct = 15;
-          const savings = Math.round(catSpend * (reductionPct / 100));
-
-          insights.push({
-            title: `Reduce Travel spending by ${reductionPct}% → Save ₹${savings.toLocaleString('en-IN')}/month`,
-            description:
-              `You spent ₹${catSpend.toLocaleString('en-IN')} on transportation (${pattern.data.metric}% of total). ` +
-              `Trimming this by just ${reductionPct}% via consolidated errands or public transit ` +
-              `options yields a solid monthly savings of ₹${savings.toLocaleString('en-IN')}.`,
+        } else if (label.includes('travel') || label.includes('transport') || label.includes('fuel')) {
+          addInsight({
+            type: 'Overspending',
+            title: 'Transport costs are higher than they should be',
+            description: `Transport made up ${pattern.data.metric}% of your spending. Reducing it by ${reduction}% may save about ₹${savings}/month.`,
             savingsEstimate: savings,
+            severity: pattern.severity,
+            category: cat,
+          });
+        } else if (label.includes('entertainment') || label.includes('streaming') || label.includes('movies')) {
+          addInsight({
+            type: 'Overspending',
+            title: 'Entertainment spending is strong',
+            description: `You spent ${pattern.data.metric}% on entertainment. Cutting that by ${reduction}% could save roughly ₹${savings}/month.`,
+            savingsEstimate: savings,
+            severity: pattern.severity,
             category: cat,
           });
         } else {
-          const reductionPct = 15;
-          const savings = Math.round(catSpend * (reductionPct / 100));
-
-          insights.push({
-            title: `Reduce ${capitalize(cat)} spending by ${reductionPct}% → Save ₹${savings.toLocaleString('en-IN')}/month`,
-            description:
-              `Your spending on ${cat} has reached ₹${catSpend.toLocaleString('en-IN')}, making up ` +
-              `${pattern.data.metric}% of your total spending. Swapping to cost-effective alternatives or ` +
-              `deferring discretionary purchases by ${reductionPct}% will easily save ₹${savings.toLocaleString('en-IN')}/month.`,
+          addInsight({
+            type: 'Overspending',
+            title: `${capitalize(cat)} spending is above average`,
+            description: `You spent ${pattern.data.metric}% on ${cat}. A ${reduction}% reduction could save around ₹${savings}/month.`,
             savingsEstimate: savings,
+            severity: pattern.severity,
             category: cat,
           });
         }
         break;
       }
 
-      // ── Weekend travel / spend spike advice ──────────────────
       case 'weekend_spike': {
-        const spikePercent = pattern.data.extra?.spikePercent ?? 25;
-        const savings = Math.round(pattern.data.metric * 4); // ~4 weekends per month
-        
-        insights.push({
-          title: `Travel spikes on weekends → Consider metro card`,
-          description:
-            `We detected that your weekend average transaction size is ${spikePercent}% ` +
-            `higher than your weekdays (an average surge of ₹${pattern.data.metric.toLocaleString('en-IN')}/transaction). ` +
-            `If this is driven by weekend transit and rides, switching to public transport ` +
-            `or pre-purchasing a metro card could offset these surges and save you roughly ₹${savings.toLocaleString('en-IN')} each month.`,
+        const spikePercent = Math.round((pattern.data.metric / totalSpend) * 100) || 20;
+        const reduction = 15;
+        const weeklyTotal = Object.values(analytics.weeklySpending).reduce((sum, value) => sum + value, 0);
+        const avgWeekly = weeklyTotal / Math.max(1, Object.keys(analytics.weeklySpending).length);
+        const savings = reduce(avgWeekly, reduction);
+
+        addInsight({
+          type: 'Behavioral Pattern',
+          title: 'Weekend spending is higher than weekday spending',
+          description: `Your weekend average is noticeably higher than weekdays. Reducing weekend outings by ${reduction}% may save about ₹${savings}/month.`,
           savingsEstimate: savings,
-          category: 'lifestyle',
+          severity: pattern.severity,
+          category: 'behavior',
         });
         break;
       }
 
-      // ── High frequency → bundling advice ──────────────────
       case 'high_frequency': {
         const merchant = pattern.merchant ?? 'a merchant';
         const merchantData = analytics.merchants.find(
           (m) => m.merchant.toLowerCase() === merchant.toLowerCase(),
         );
         const total = merchantData?.total ?? 0;
-        const savings = Math.round(total * 0.1); 
-        
-        insights.push({
-          title: `Reduce frequent small spends → Save ₹${savings.toLocaleString('en-IN')}/month by bundling`,
-          description:
-            `You visited "${capitalize(merchant)}" ${pattern.data.metric} times this period, totaling ` +
-            `₹${total.toLocaleString('en-IN')}. Frequent transactions are prime candidates for loyalty ` +
-            `programs or bundling orders to eliminate repetitive delivery fees, saving you up to 10% (₹${savings}).`,
+        const reduction = 15;
+        const savings = reduce(total, reduction);
+
+        addInsight({
+          type: 'Optimization',
+          title: `Small repeated purchases at ${capitalize(merchant)} are adding up`,
+          description: `You made ${pattern.data.metric} purchases at ${capitalize(merchant)}. Cutting those costs by ${reduction}% might save about ₹${savings}/month.`,
           savingsEstimate: savings,
-          category: 'frequent_spend',
+          severity: pattern.severity,
+          category: merchant,
         });
         break;
       }
 
-      // ── Subscription detection → cancel/review advice ─────
       case 'subscription': {
-        const merchant = pattern.merchant ?? 'a service';
-        const savings = Math.round(pattern.data.metric); 
-        
-        insights.push({
-          title: `Subscriptions: cancel unused services → Save ₹${savings.toLocaleString('en-IN')}/month`,
-          description:
-            `We detected recurring, stable billing of ₹${pattern.data.metric.toLocaleString('en-IN')} from ` +
-            `"${capitalize(merchant)}" (deviation within strict subscription thresholds). If you aren't ` +
-            `consistently utilizing this service, canceling it today is a risk-free way to immediately boost ` +
-            `your disposable income.`,
+        const merchant = pattern.merchant ?? 'a recurring bill';
+        const amount = pattern.data.metric;
+        const reduction = 20;
+        const savings = reduce(amount, reduction);
+
+        addInsight({
+          type: 'Recurring Expense',
+          title: `Review recurring charges from ${capitalize(merchant)}`,
+          description: `There appears to be a repeat payment of about ₹${amount}/month for ${capitalize(merchant)}. Reviewing this cost and trimming it by ${reduction}% could save around ₹${savings}/month.`,
           savingsEstimate: savings,
-          category: 'subscriptions',
+          severity: pattern.severity,
+          category: merchant,
         });
         break;
       }
@@ -134,12 +141,13 @@ export function generateInsights(
   }
 
   if (insights.length === 0) {
+    const bufferSavings = reduce(totalSpend, 10);
     insights.push({
-      title: `Keep a steady course → Save by maintaining current balance`,
-      description:
-        `Your budget looks incredibly healthy with no major category overspending or erratic spending patterns. ` +
-        `We suggest maintaining a 10% general savings buffer, which would safeguard your financial score long term.`,
-      savingsEstimate: Math.round(totalSpend * 0.1),
+      type: 'Optimization',
+      title: 'Your spending looks balanced',
+      description: `Your spending is generally steady. Saving 10% across flexible categories could free up roughly ₹${bufferSavings}/month.`,
+      savingsEstimate: bufferSavings,
+      severity: 'low',
       category: 'general',
     });
   }

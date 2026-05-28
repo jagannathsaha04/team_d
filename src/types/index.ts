@@ -64,9 +64,11 @@ export interface Pattern {
 
 /** A single actionable insight with estimated savings */
 export interface Insight {
+  type: 'Overspending' | 'Recurring Expense' | 'Behavioral Pattern' | 'Optimization';
   title: string;
   description: string;
   savingsEstimate: number;
+  severity: 'high' | 'medium' | 'low';
   category: string;
 }
 
