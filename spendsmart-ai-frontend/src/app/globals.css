@@ -1,0 +1,110 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --background: 220 33% 98%;
+    --foreground: 224 71.4% 4.1%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 71.4% 4.1%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 71.4% 4.1%;
+    --primary: 242 82% 58%;
+    --primary-foreground: 210 20% 98%;
+    --secondary: 220 14.3% 95.9%;
+    --secondary-foreground: 220.9 39.3% 11%;
+    --muted: 220 14.3% 95.9%;
+    --muted-foreground: 220 8.9% 46.1%;
+    --accent: 262 80% 50%;
+    --accent-foreground: 210 20% 98%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 242 82% 58%;
+    --radius: 1rem;
+  }
+
+  .dark {
+    --background: 224 71% 4%;
+    --foreground: 210 20% 98%;
+    --card: 224 71% 6%;
+    --card-foreground: 210 20% 98%;
+    --popover: 224 71% 4%;
+    --popover-foreground: 210 20% 98%;
+    --primary: 242 82% 58%;
+    --primary-foreground: 210 20% 98%;
+    --secondary: 224 71% 12%;
+    --secondary-foreground: 210 20% 98%;
+    --muted: 224 71% 12%;
+    --muted-foreground: 217.9 10.6% 64.9%;
+    --accent: 262 80% 50%;
+    --accent-foreground: 210 20% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 224 71% 12%;
+    --input: 224 71% 12%;
+    --ring: 242 82% 58%;
+  }
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  overflow-x: hidden;
+}
+
+/* Glassmorphism Styles */
+.glass {
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.dark .glass {
+  background: rgba(10, 10, 16, 0.65);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Custom animations & glow */
+.glow-card {
+  position: relative;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glow-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  z-index: -1;
+  background: radial-gradient(
+    800px circle at var(--x, 0px) var(--y, 0px),
+    rgba(99, 102, 241, 0.15),
+    transparent 40%
+  );
+}
+
+.glow-card:hover::after {
+  opacity: 1;
+}
+
+/* Animated Gradient backgrounds */
+.bg-gradient-mesh {
+  background-color: hsl(var(--background));
+  background-image: 
+    radial-gradient(at 0% 0%, hsla(242, 82%, 58%, 0.12) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, hsla(262, 80%, 50%, 0.12) 0px, transparent 50%);
+}
+
+.dark .bg-gradient-mesh {
+  background-image: 
+    radial-gradient(at 0% 0%, hsla(242, 82%, 58%, 0.08) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, hsla(262, 80%, 50%, 0.08) 0px, transparent 50%),
+    radial-gradient(at 50% 0%, hsla(280, 80%, 50%, 0.03) 0px, transparent 50%);
+}
