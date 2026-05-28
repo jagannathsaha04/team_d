@@ -16,6 +16,7 @@ export function calculateScore(
   insights: Insight[],
 ): HealthScore {
   let score = 0;
+  const totalSpend = analytics.aggregates.totalSpend;
 
   // Factor 1: Essential vs Luxury ratio (max 30 pts)
   let essentialSpend = 0;
@@ -24,7 +25,7 @@ export function calculateScore(
       essentialSpend += amount;
     }
   }
-  const essentialRatio = analytics.totalSpend > 0 ? essentialSpend / analytics.totalSpend : 0.5;
+  const essentialRatio = totalSpend > 0 ? essentialSpend / totalSpend : 0.5;
   score += Math.min(30, Math.round((essentialRatio / 0.7) * 30));
 
   // Factor 2: Overspending categories (max 25 pts)
@@ -44,7 +45,7 @@ export function calculateScore(
 
   // Factor 4: Savings potential (max 20 pts)
   const totalSavings = insights.reduce((s, i) => s + i.savingsEstimate, 0);
-  const savingsRatio = analytics.totalSpend > 0 ? totalSavings / analytics.totalSpend : 0;
+  const savingsRatio = totalSpend > 0 ? totalSavings / totalSpend : 0;
   score += Math.min(20, Math.max(0, Math.round(20 * (1 - savingsRatio / 0.3))));
 
   // Clamp and label

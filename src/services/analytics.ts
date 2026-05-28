@@ -1,17 +1,21 @@
 // ============================================================
-// STEP 2 — Analytics Engine
-// Computes aggregate metrics from validated transactions:
-//   • Total spend
-//   • Per-category breakdown
-//   • Weekly spending timeline
-//   • Top merchants by spend
-// ============================================================
+// STEP 2 — Analytics Engine (Refactored into explicit pipeline)
+//
+// The analysis pipeline is now broken into discrete, testable
+// functions that each do ONE thing:
+//
+//   aggregateTotals()          → total spend, count, average, date range
+//   computeCategoryBreakdown() → per-category spend sums
+//   computeWeeklySpending()    → per-ISO-week spend sums
+//   computeMerchantRankings()  → top merchants by total spend
+//
 // STEP 3 — Pattern Detection
-// Layered on top of analytics to detect anomalies:
-//   • Overspending  — any category > 30% of total
-//   • Weekend spikes — weekend avg > weekday avg
-//   • High frequency — same merchant > 5 transactions
-//   • Subscriptions  — recurring same-merchant, similar amounts
+//
+// Each pattern detector returns a structured signal with:
+//   { type, severity, data: { metric, threshold, unit } }
+//
+// This makes patterns explainable — you can always say:
+//   "This rule fired because <metric> exceeded <threshold> <unit>"
 // ============================================================
 
 import {
@@ -23,15 +27,14 @@ import {
   Pattern,
 } from '../types';
 
-// ── Helpers ─────────────────────────────────────────────────
+// ── Date Helpers ────────────────────────────────────────────
 
 /**
  * Return an ISO-week key like "2024-W03" for a given date.
+ * Used to bucket transactions into weekly time windows.
  */
 function getISOWeekKey(d: Date): string {
-  // Clone to avoid mutating the original
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  // Set to nearest Thursday (ISO week definition)
   date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
   const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
   const weekNo = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
@@ -46,86 +49,151 @@ function isWeekend(d: Date): boolean {
   return day === 0 || day === 6;
 }
 
-// ── STEP 2: Core Analytics ──────────────────────────────────
+/** Round a number to 2 decimal places. */
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
 
-/**
- * Compute aggregate analytics across all transactions.
- */
-export function analyzeTransactions(transactions: Transaction[]): AnalyticsResult {
+// ─────────────────────────────────────────────────────────────
+// STEP 2A: aggregateTotals()
+// ─────────────────────────────────────────────────────────────
+
+export function aggregateTotals(transactions: Transaction[]): AnalyticsResult['aggregates'] {
   let totalSpend = 0;
-  const categoryBreakdown: CategoryBreakdown = {};
-  const weeklySpending: WeeklySpending = {};
-  const merchantTotals: Record<string, number> = {};
+  let minDate = transactions[0]?.date ?? new Date();
+  let maxDate = transactions[0]?.date ?? new Date();
 
   for (const tx of transactions) {
-    // Running total
     totalSpend += tx.amount;
-
-    // Category accumulation
-    const cat = tx.category.toLowerCase();
-    categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + tx.amount;
-
-    // Weekly accumulation
-    const weekKey = getISOWeekKey(tx.date);
-    weeklySpending[weekKey] = (weeklySpending[weekKey] || 0) + tx.amount;
-
-    // Merchant accumulation
-    const m = tx.merchant.toLowerCase();
-    merchantTotals[m] = (merchantTotals[m] || 0) + tx.amount;
+    if (tx.date < minDate) minDate = tx.date;
+    if (tx.date > maxDate) maxDate = tx.date;
   }
 
-  // Top merchants — sorted descending by total, take top 10
-  const topMerchants: MerchantTotal[] = Object.entries(merchantTotals)
-    .map(([merchant, total]) => ({ merchant, total: Math.round(total * 100) / 100 }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 10);
-
   return {
-    totalSpend: Math.round(totalSpend * 100) / 100,
-    categoryBreakdown: roundValues(categoryBreakdown),
-    weeklySpending: roundValues(weeklySpending),
-    topMerchants,
+    totalSpend: round2(totalSpend),
+    transactionCount: transactions.length,
+    averageTransaction: round2(transactions.length > 0 ? totalSpend / transactions.length : 0),
+    dateRange: {
+      from: minDate.toISOString().split('T')[0],
+      to: maxDate.toISOString().split('T')[0],
+    },
   };
 }
 
-/** Round all values in a Record to 2 decimals for cleanliness. */
-function roundValues(obj: Record<string, number>): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const [k, v] of Object.entries(obj)) {
-    out[k] = Math.round(v * 100) / 100;
+// ─────────────────────────────────────────────────────────────
+// STEP 2B: computeCategoryBreakdown()
+// ─────────────────────────────────────────────────────────────
+
+export function computeCategoryBreakdown(transactions: Transaction[]): CategoryBreakdown {
+  const breakdown: CategoryBreakdown = {};
+
+  for (const tx of transactions) {
+    const cat = tx.category;
+    breakdown[cat] = (breakdown[cat] || 0) + tx.amount;
   }
-  return out;
+
+  for (const key of Object.keys(breakdown)) {
+    breakdown[key] = round2(breakdown[key]);
+  }
+
+  return breakdown;
 }
 
-// ── STEP 3: Pattern Detection ───────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// STEP 2C: computeWeeklySpending()
+// ─────────────────────────────────────────────────────────────
 
-/**
- * Detect spending patterns and anomalies from transactions + analytics.
- */
-export function detectPatterns(
-  transactions: Transaction[],
-  analytics: AnalyticsResult,
+export function computeWeeklySpending(transactions: Transaction[]): WeeklySpending {
+  const weekly: WeeklySpending = {};
+
+  for (const tx of transactions) {
+    const weekKey = getISOWeekKey(tx.date);
+    weekly[weekKey] = (weekly[weekKey] || 0) + tx.amount;
+  }
+
+  for (const key of Object.keys(weekly)) {
+    weekly[key] = round2(weekly[key]);
+  }
+
+  return weekly;
+}
+
+// ─────────────────────────────────────────────────────────────
+// STEP 2D: computeMerchantRankings()
+// ─────────────────────────────────────────────────────────────
+
+export function computeMerchantRankings(transactions: Transaction[]): MerchantTotal[] {
+  const totals: Record<string, { total: number; count: number }> = {};
+
+  for (const tx of transactions) {
+    const m = tx.merchant;
+    if (!totals[m]) totals[m] = { total: 0, count: 0 };
+    totals[m].total += tx.amount;
+    totals[m].count += 1;
+  }
+
+  return Object.entries(totals)
+    .map(([merchant, { total, count }]) => ({
+      merchant,
+      total: round2(total),
+      transactionCount: count,
+    }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 10);
+}
+
+// ─────────────────────────────────────────────────────────────
+// STEP 2 (main): analyzeTransactions()
+// ─────────────────────────────────────────────────────────────
+
+export function analyzeTransactions(transactions: Transaction[]): AnalyticsResult {
+  return {
+    aggregates: aggregateTotals(transactions),
+    categoryBreakdown: computeCategoryBreakdown(transactions),
+    weeklySpending: computeWeeklySpending(transactions),
+    merchants: computeMerchantRankings(transactions),
+  };
+}
+
+// ═════════════════════════════════════════════════════════════
+// STEP 3 — PATTERN DETECTION
+// ═════════════════════════════════════════════════════════════
+
+// ── 3A: Overspending Detection ──────────────────────────────
+function detectOverspending(
+  categoryBreakdown: CategoryBreakdown,
+  totalSpend: number,
 ): Pattern[] {
+  const THRESHOLD_PCT = 30;
   const patterns: Pattern[] = [];
 
-  // ── 1. Overspending: any category > 30% of total ──
-  for (const [category, amount] of Object.entries(analytics.categoryBreakdown)) {
-    const pct = (amount / analytics.totalSpend) * 100;
-    if (pct > 30) {
+  for (const [category, amount] of Object.entries(categoryBreakdown)) {
+    const pct = round2((amount / totalSpend) * 100);
+
+    if (pct > THRESHOLD_PCT) {
+      const severity: Pattern['severity'] =
+        pct > 50 ? 'high' :
+        pct > 40 ? 'medium' : 'low';
+
       patterns.push({
         type: 'overspending',
+        severity,
         category,
-        detail: `"${category}" accounts for ${pct.toFixed(1)}% of total spending (₹${amount.toFixed(0)})`,
-        value: Math.round(pct * 10) / 10,
+        detail:
+          `"${category}" accounts for ${pct}% of total spending (₹${Math.round(amount)}). ` +
+          `Rule: any category > ${THRESHOLD_PCT}% is flagged as overspending.`,
+        data: { metric: pct, threshold: THRESHOLD_PCT, unit: '% of total spend' },
       });
     }
   }
 
-  // ── 2. Weekend spikes: compare weekend avg vs weekday avg ──
-  let weekendTotal = 0;
-  let weekendCount = 0;
-  let weekdayTotal = 0;
-  let weekdayCount = 0;
+  return patterns;
+}
+
+// ── 3B: Weekend Spike Detection ─────────────────────────────
+function detectWeekendSpikes(transactions: Transaction[]): Pattern[] {
+  let weekendTotal = 0, weekendCount = 0;
+  let weekdayTotal = 0, weekdayCount = 0;
 
   for (const tx of transactions) {
     if (isWeekend(tx.date)) {
@@ -137,62 +205,126 @@ export function detectPatterns(
     }
   }
 
-  const weekendAvg = weekendCount > 0 ? weekendTotal / weekendCount : 0;
-  const weekdayAvg = weekdayCount > 0 ? weekdayTotal / weekdayCount : 0;
+  const weekendAvg = weekendCount > 0 ? round2(weekendTotal / weekendCount) : 0;
+  const weekdayAvg = weekdayCount > 0 ? round2(weekdayTotal / weekdayCount) : 0;
 
-  if (weekendAvg > weekdayAvg * 1.25 && weekendCount > 0) {
-    // Weekend avg is at least 25% higher than weekday avg
-    patterns.push({
+  const SPIKE_THRESHOLD = 1.25;
+  if (weekendAvg > weekdayAvg * SPIKE_THRESHOLD && weekendCount >= 2) {
+    const spikePercent = round2(((weekendAvg / weekdayAvg) - 1) * 100);
+    const severity: Pattern['severity'] = spikePercent > 50 ? 'high' : 'medium';
+    const spikeAmount = round2(weekendAvg - weekdayAvg);
+
+    return [{
       type: 'weekend_spike',
-      detail: `Weekend avg spend (₹${weekendAvg.toFixed(0)}) is ${((weekendAvg / weekdayAvg - 1) * 100).toFixed(0)}% higher than weekday avg (₹${weekdayAvg.toFixed(0)})`,
-      value: Math.round(weekendAvg - weekdayAvg),
-    });
+      severity,
+      detail:
+        `Weekend avg spend (₹${weekendAvg}/tx) is ${spikePercent}% higher than weekday avg ` +
+        `(₹${weekdayAvg}/tx). Rule: flags when weekend avg exceeds weekday avg by >25%.`,
+      data: {
+        metric: spikeAmount, // primary financial metric: extra spend per transaction
+        threshold: 25,
+        unit: 'INR extra spend per tx',
+        extra: {
+          spikePercent,
+        },
+      },
+    }];
   }
 
-  // ── 3. High frequency: same merchant > 5 transactions ──
+  return [];
+}
+
+// ── 3C: High-Frequency Small Spends ─────────────────────────
+function detectHighFrequency(transactions: Transaction[]): Pattern[] {
+  const FREQ_THRESHOLD = 5;
   const merchantFreq: Record<string, number> = {};
+  const patterns: Pattern[] = [];
+
   for (const tx of transactions) {
-    const key = tx.merchant.toLowerCase();
-    merchantFreq[key] = (merchantFreq[key] || 0) + 1;
+    merchantFreq[tx.merchant] = (merchantFreq[tx.merchant] || 0) + 1;
   }
 
   for (const [merchant, count] of Object.entries(merchantFreq)) {
-    if (count > 5) {
+    if (count > FREQ_THRESHOLD) {
+      const severity: Pattern['severity'] = count > 10 ? 'high' : 'medium';
+
       patterns.push({
         type: 'high_frequency',
+        severity,
         merchant,
-        detail: `${count} transactions at "${merchant}" — consider bundling or a membership`,
-        value: count,
+        detail:
+          `${count} transactions at "${merchant}" — frequent small spends add up. ` +
+          `Rule: flags any merchant with >${FREQ_THRESHOLD} transactions.`,
+        data: { metric: count, threshold: FREQ_THRESHOLD, unit: 'transactions' },
       });
     }
   }
 
-  // ── 4. Subscription detection: recurring merchant with similar amounts ──
+  return patterns;
+}
+
+// ── 3D: Subscription Detection ──────────────────────────────
+function detectSubscriptions(transactions: Transaction[]): Pattern[] {
   const merchantAmounts: Record<string, number[]> = {};
+  const patterns: Pattern[] = [];
+
   for (const tx of transactions) {
-    const key = tx.merchant.toLowerCase();
-    if (!merchantAmounts[key]) merchantAmounts[key] = [];
-    merchantAmounts[key].push(tx.amount);
+    if (!merchantAmounts[tx.merchant]) merchantAmounts[tx.merchant] = [];
+    merchantAmounts[tx.merchant].push(tx.amount);
   }
 
   for (const [merchant, amounts] of Object.entries(merchantAmounts)) {
     if (amounts.length < 2) continue;
 
-    // Check if amounts are "similar" — standard deviation < 15% of mean
     const mean = amounts.reduce((s, a) => s + a, 0) / amounts.length;
     const variance = amounts.reduce((s, a) => s + (a - mean) ** 2, 0) / amounts.length;
     const stdDev = Math.sqrt(variance);
-    const coeffOfVariation = mean > 0 ? stdDev / mean : 1;
+    const cv = mean > 0 ? stdDev / mean : 1;
+    const CV_THRESHOLD = 0.15;
 
-    if (coeffOfVariation < 0.15 && amounts.length >= 2) {
+    if (cv < CV_THRESHOLD) {
+      const totalValue = round2(mean * amounts.length);
+      const severity: Pattern['severity'] = totalValue > 1000 ? 'high' : 'medium';
+
       patterns.push({
         type: 'subscription',
+        severity,
         merchant,
-        detail: `"${merchant}" appears ${amounts.length} times with similar amounts (~₹${mean.toFixed(0)}). Likely a subscription.`,
-        value: Math.round(mean * amounts.length * 100) / 100,
+        detail:
+          `"${merchant}" appears ${amounts.length} times with consistent amounts ` +
+          `(~₹${Math.round(mean)}/charge, CV=${(cv * 100).toFixed(1)}%). ` +
+          `Total: ₹${totalValue}. Rule: CV < ${CV_THRESHOLD * 100}% = likely subscription.`,
+        data: {
+          metric: round2(mean), // primary financial metric: recurring cost per charge
+          threshold: CV_THRESHOLD * 100,
+          unit: 'INR per charge',
+          extra: {
+            cvPercent: round2(cv * 100),
+            count: amounts.length,
+          },
+        },
       });
     }
   }
+
+  return patterns;
+}
+
+// ── Main pattern detection orchestrator ─────────────────────
+
+export function detectPatterns(
+  transactions: Transaction[],
+  analytics: AnalyticsResult,
+): Pattern[] {
+  const patterns: Pattern[] = [
+    ...detectOverspending(analytics.categoryBreakdown, analytics.aggregates.totalSpend),
+    ...detectWeekendSpikes(transactions),
+    ...detectHighFrequency(transactions),
+    ...detectSubscriptions(transactions),
+  ];
+
+  const severityOrder = { high: 0, medium: 1, low: 2 };
+  patterns.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
 
   return patterns;
 }

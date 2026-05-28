@@ -1,25 +1,27 @@
 // ============================================================
 // STEP 4 — Recommendation Engine
 // STEP 5 — Savings Estimation
+// STEP 7 — Explainability
 //
 // Generates natural-language, financial-advisor-style insights
-// based on detected patterns. Each insight includes an
-// estimated savings figure (% reduction × category spend).
+// based on detected patterns. Each insight includes a
+// clear title format matching requested examples exactly:
+//   "Reduce [Category] ordering by [X]% → Save ₹[Savings]/month"
+//   "Travel spikes on weekends → Consider metro card"
+//   "Subscriptions: cancel unused services → Save ₹[X]/month"
 // ============================================================
 
 import { AnalyticsResult, Pattern, Insight } from '../types';
 
 /**
  * Generate actionable financial insights from analytics and detected patterns.
- *
- * Each insight reads like advice from a personal financial advisor —
- * warm, specific, and backed by numbers.
  */
 export function generateInsights(
   analytics: AnalyticsResult,
   patterns: Pattern[],
 ): Insight[] {
   const insights: Insight[] = [];
+  const totalSpend = analytics.aggregates.totalSpend;
 
   for (const pattern of patterns) {
     switch (pattern.type) {
@@ -29,60 +31,42 @@ export function generateInsights(
         const catSpend = analytics.categoryBreakdown[cat] ?? 0;
 
         if (cat.includes('food') || cat.includes('dining') || cat.includes('restaurant')) {
-          // Food-specific advice
           const reductionPct = 20;
           const savings = Math.round(catSpend * (reductionPct / 100));
+          
           insights.push({
-            title: `Your food spending deserves a second look`,
+            title: `Reduce Food ordering by ${reductionPct}% → Save ₹${savings.toLocaleString('en-IN')}/month`,
             description:
-              `You've spent ₹${catSpend.toLocaleString('en-IN')} on ${cat}, which makes up over ` +
-              `${pattern.value}% of your total budget. A modest ${reductionPct}% cutback — ` +
-              `maybe meal-prepping twice a week or swapping delivery for home-cooked meals — ` +
-              `could save you around ₹${savings.toLocaleString('en-IN')} this period. ` +
-              `Small shifts here add up fast.`,
+              `Your food spending (₹${catSpend.toLocaleString('en-IN')}) represents ${pattern.data.metric}% ` +
+              `of your total budget. Because eating out and delivery are highly flexible, targeting a ` +
+              `${reductionPct}% reduction through home cooking or meal prepping is the most effective ` +
+              `way to claw back ₹${savings.toLocaleString('en-IN')} this month.`,
             savingsEstimate: savings,
             category: cat,
           });
-        } else if (cat.includes('travel') || cat.includes('transport')) {
-          // Travel-specific advice
+        } else if (cat.includes('travel') || cat.includes('transport') || cat.includes('fuel')) {
           const reductionPct = 15;
           const savings = Math.round(catSpend * (reductionPct / 100));
+
           insights.push({
-            title: `Travel costs are eating into your budget`,
+            title: `Reduce Travel spending by ${reductionPct}% → Save ₹${savings.toLocaleString('en-IN')}/month`,
             description:
-              `At ₹${catSpend.toLocaleString('en-IN')}, travel & transport is one of your largest ` +
-              `spending categories (${pattern.value}%). Consider a monthly transit pass, ` +
-              `carpooling, or consolidating errands to reduce trips. ` +
-              `Even a ${reductionPct}% reduction could free up ₹${savings.toLocaleString('en-IN')}.`,
-            savingsEstimate: savings,
-            category: cat,
-          });
-        } else if (cat.includes('entertainment') || cat.includes('leisure')) {
-          // Entertainment advice
-          const reductionPct = 25;
-          const savings = Math.round(catSpend * (reductionPct / 100));
-          insights.push({
-            title: `Entertainment spending is on the higher side`,
-            description:
-              `You're allocating ₹${catSpend.toLocaleString('en-IN')} to entertainment — ` +
-              `about ${pattern.value}% of your total. That's not necessarily bad, but if you're ` +
-              `looking to tighten things up, trimming ${reductionPct}% (roughly ₹${savings.toLocaleString('en-IN')}) ` +
-              `is a painless place to start. Think free events, shared subscriptions, or a ` +
-              `"no-spend weekend" once a month.`,
+              `You spent ₹${catSpend.toLocaleString('en-IN')} on transportation (${pattern.data.metric}% of total). ` +
+              `Trimming this by just ${reductionPct}% via consolidated errands or public transit ` +
+              `options yields a solid monthly savings of ₹${savings.toLocaleString('en-IN')}.`,
             savingsEstimate: savings,
             category: cat,
           });
         } else {
-          // Generic overspending advice
           const reductionPct = 15;
           const savings = Math.round(catSpend * (reductionPct / 100));
+
           insights.push({
-            title: `${capitalize(cat)} spending is above the comfort zone`,
+            title: `Reduce ${capitalize(cat)} spending by ${reductionPct}% → Save ₹${savings.toLocaleString('en-IN')}/month`,
             description:
-              `Your "${cat}" category sits at ₹${catSpend.toLocaleString('en-IN')}, which is ` +
-              `${pattern.value}% of your total spend. I'd recommend auditing this category — ` +
-              `see which individual purchases you can reduce or defer. A ${reductionPct}% trim ` +
-              `could save ₹${savings.toLocaleString('en-IN')}.`,
+              `Your spending on ${cat} has reached ₹${catSpend.toLocaleString('en-IN')}, making up ` +
+              `${pattern.data.metric}% of your total spending. Swapping to cost-effective alternatives or ` +
+              `deferring discretionary purchases by ${reductionPct}% will easily save ₹${savings.toLocaleString('en-IN')}/month.`,
             savingsEstimate: savings,
             category: cat,
           });
@@ -90,16 +74,18 @@ export function generateInsights(
         break;
       }
 
-      // ── Weekend spike advice ──────────────────────────────
+      // ── Weekend travel / spend spike advice ──────────────────
       case 'weekend_spike': {
-        const savings = Math.round(pattern.value * 4); // ~4 weekends per month
+        const spikePercent = pattern.data.extra?.spikePercent ?? 25;
+        const savings = Math.round(pattern.data.metric * 4); // ~4 weekends per month
+        
         insights.push({
-          title: `Weekend spending is noticeably higher`,
+          title: `Travel spikes on weekends → Consider metro card`,
           description:
-            `Your weekend transactions average ₹${pattern.value} more per transaction than ` +
-            `weekdays. Over a month that could mean an extra ₹${savings.toLocaleString('en-IN')} ` +
-            `slipping through. Try setting a weekend spending cap or planning free activities — ` +
-            `hikes, home movie nights, or cooking with friends.`,
+            `We detected that your weekend average transaction size is ${spikePercent}% ` +
+            `higher than your weekdays (an average surge of ₹${pattern.data.metric.toLocaleString('en-IN')}/transaction). ` +
+            `If this is driven by weekend transit and rides, switching to public transport ` +
+            `or pre-purchasing a metro card could offset these surges and save you roughly ₹${savings.toLocaleString('en-IN')} each month.`,
           savingsEstimate: savings,
           category: 'lifestyle',
         });
@@ -109,18 +95,18 @@ export function generateInsights(
       // ── High frequency → bundling advice ──────────────────
       case 'high_frequency': {
         const merchant = pattern.merchant ?? 'a merchant';
-        const merchantData = analytics.topMerchants.find(
+        const merchantData = analytics.merchants.find(
           (m) => m.merchant.toLowerCase() === merchant.toLowerCase(),
         );
         const total = merchantData?.total ?? 0;
-        const savings = Math.round(total * 0.1); // estimate 10% savings via bundling
+        const savings = Math.round(total * 0.1); 
+        
         insights.push({
-          title: `You're a regular at ${capitalize(merchant)}`,
+          title: `Reduce frequent small spends → Save ₹${savings.toLocaleString('en-IN')}/month by bundling`,
           description:
-            `With ${pattern.value} visits and ₹${total.toLocaleString('en-IN')} spent, ` +
-            `you clearly love "${merchant}". Ask about loyalty programs, bulk discounts, ` +
-            `or monthly memberships — frequent customers often qualify for 10%+ savings. ` +
-            `That's roughly ₹${savings.toLocaleString('en-IN')} back in your pocket.`,
+            `You visited "${capitalize(merchant)}" ${pattern.data.metric} times this period, totaling ` +
+            `₹${total.toLocaleString('en-IN')}. Frequent transactions are prime candidates for loyalty ` +
+            `programs or bundling orders to eliminate repetitive delivery fees, saving you up to 10% (₹${savings}).`,
           savingsEstimate: savings,
           category: 'frequent_spend',
         });
@@ -130,16 +116,15 @@ export function generateInsights(
       // ── Subscription detection → cancel/review advice ─────
       case 'subscription': {
         const merchant = pattern.merchant ?? 'a service';
-        const annualCost = Math.round(pattern.value * 12);
-        const savings = Math.round(pattern.value); // save the full amount by cancelling
+        const savings = Math.round(pattern.data.metric); 
+        
         insights.push({
-          title: `Possible subscription: ${capitalize(merchant)}`,
+          title: `Subscriptions: cancel unused services → Save ₹${savings.toLocaleString('en-IN')}/month`,
           description:
-            `"${capitalize(merchant)}" charges roughly the same amount on a recurring basis, ` +
-            `totalling ₹${pattern.value.toLocaleString('en-IN')} so far. Projected annually, ` +
-            `that's ₹${annualCost.toLocaleString('en-IN')}. If you're not actively using this ` +
-            `service, cancelling it could save ₹${savings.toLocaleString('en-IN')} right away. ` +
-            `Even if you keep it, check for a cheaper tier.`,
+            `We detected recurring, stable billing of ₹${pattern.data.metric.toLocaleString('en-IN')} from ` +
+            `"${capitalize(merchant)}" (deviation within strict subscription thresholds). If you aren't ` +
+            `consistently utilizing this service, canceling it today is a risk-free way to immediately boost ` +
+            `your disposable income.`,
           savingsEstimate: savings,
           category: 'subscriptions',
         });
@@ -148,15 +133,13 @@ export function generateInsights(
     }
   }
 
-  // ── Bonus insight if no patterns found (everything looks healthy) ──
   if (insights.length === 0) {
     insights.push({
-      title: `Your spending looks well-balanced`,
+      title: `Keep a steady course → Save by maintaining current balance`,
       description:
-        `No major red flags here — your categories are diversified and no single area ` +
-        `dominates your budget. Keep tracking your expenses and revisit monthly to ` +
-        `catch any emerging trends early.`,
-      savingsEstimate: 0,
+        `Your budget looks incredibly healthy with no major category overspending or erratic spending patterns. ` +
+        `We suggest maintaining a 10% general savings buffer, which would safeguard your financial score long term.`,
+      savingsEstimate: Math.round(totalSpend * 0.1),
       category: 'general',
     });
   }
@@ -164,7 +147,6 @@ export function generateInsights(
   return insights;
 }
 
-/** Capitalize the first letter of a string. */
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }

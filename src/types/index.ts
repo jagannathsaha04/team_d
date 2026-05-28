@@ -24,23 +24,42 @@ export interface WeeklySpending {
 export interface MerchantTotal {
   merchant: string;
   total: number;
+  transactionCount: number;
 }
 
-/** Full analytics output from analyzeTransactions() */
+/** Full analytics output — structured into clear sections */
 export interface AnalyticsResult {
-  totalSpend: number;
+  /** Aggregate numbers across all transactions */
+  aggregates: {
+    totalSpend: number;
+    transactionCount: number;
+    averageTransaction: number;
+    dateRange: { from: string; to: string };
+  };
+  /** Per-category spend totals */
   categoryBreakdown: CategoryBreakdown;
+  /** Per-ISO-week spend totals */
   weeklySpending: WeeklySpending;
-  topMerchants: MerchantTotal[];
+  /** Top merchants ranked by total spend */
+  merchants: MerchantTotal[];
 }
 
-/** A detected spending pattern / anomaly */
+/**
+ * A detected spending pattern / anomaly.
+ */
 export interface Pattern {
   type: 'overspending' | 'weekend_spike' | 'high_frequency' | 'subscription';
+  severity: 'high' | 'medium' | 'low';
   category?: string;
   merchant?: string;
   detail: string;
-  value: number; // the metric that triggered the pattern
+  /** The trigger metric (e.g. % of total, count, ₹ diff) */
+  data: {
+    metric: number;
+    threshold: number;
+    unit: string;
+    extra?: Record<string, number>; // optional dictionary for auxiliary metrics
+  };
 }
 
 /** A single actionable insight with estimated savings */
@@ -85,9 +104,11 @@ export interface ParseResult {
   rowCount: number;
 }
 
-/** Combined analysis response sent to the client */
+/** Clean /analyze response shape (Step 8) */
 export interface AnalysisResponse {
-  analytics: AnalyticsResult;
+  totalSpend: number;
+  categoryBreakdown: CategoryBreakdown;
+  weeklySpending: WeeklySpending;
   patterns: Pattern[];
   insights: Insight[];
   healthScore: HealthScore;

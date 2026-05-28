@@ -1,7 +1,16 @@
 // ============================================================
 // ROUTE: POST /analyze
-// Accepts parsed transactions (JSON array) in the request body,
-// runs analytics, pattern detection, insights, and scoring.
+//
+// Refactored to return the exact, clean output format requested
+// in STEP 8:
+// {
+//   totalSpend,
+//   categoryBreakdown,
+//   weeklySpending,
+//   patterns,
+//   insights,
+//   healthScore
+// }
 // ============================================================
 
 import { Router, Request, Response } from 'express';
@@ -15,7 +24,7 @@ const router = Router();
 /**
  * POST /analyze
  * Body: { transactions: Transaction[] }
- * Returns: { analytics, patterns, insights, healthScore }
+ * Returns: { totalSpend, categoryBreakdown, weeklySpending, patterns, insights, healthScore }
  */
 router.post('/', (req: Request, res: Response): void => {
   try {
@@ -38,21 +47,23 @@ router.post('/', (req: Request, res: Response): void => {
       category: String(tx.category),
     }));
 
-    // Step 2: Analytics
+    // Step 2: Run core analytics pipeline (aggregates, category/weekly breakdown, merchant ranking)
     const analytics = analyzeTransactions(hydrated);
 
-    // Step 3: Pattern detection
+    // Step 3: Run explicit pattern detection
     const patterns = detectPatterns(hydrated, analytics);
 
-    // Step 4 + 5: Insights with savings estimates
+    // Step 4+5: Run insight engine (matching exact target titles + advisor explainability)
     const insights = generateInsights(analytics, patterns);
 
-    // Step 6: Financial health score
+    // Step 6: Calculate the weighted financial health score (0-100)
     const healthScore = calculateScore(analytics, patterns, insights);
 
+    // Step 8: Return the clean final output format
     res.status(200).json({
-      success: true,
-      analytics,
+      totalSpend: analytics.aggregates.totalSpend,
+      categoryBreakdown: analytics.categoryBreakdown,
+      weeklySpending: analytics.weeklySpending,
       patterns,
       insights,
       healthScore,
@@ -60,7 +71,7 @@ router.post('/', (req: Request, res: Response): void => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: 'Analysis failed.',
+      error: 'Analysis pipeline failed.',
       detail: error instanceof Error ? error.message : String(error),
     });
   }

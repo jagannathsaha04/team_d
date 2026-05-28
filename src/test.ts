@@ -18,32 +18,35 @@ const csvPath = path.join(__dirname, '..', 'sample.csv');
 const csvText = fs.readFileSync(csvPath, 'utf-8');
 const parseResult = parseCSV(csvText);
 
-console.log('STEP 1 — CSV Parsing');
+console.log('STEP 1 — CSV Parsing & Normalization');
 console.log(`  Rows: ${parseResult.rowCount}`);
-console.log(`  Valid transactions: ${parseResult.transactions.length}`);
+console.log(`  Valid normalized transactions: ${parseResult.transactions.length}`);
 console.log(`  Errors: ${parseResult.errors.length}`);
 console.log(`  Success: ${parseResult.success}\n`);
 
 // Step 2: Analytics
 const analytics = analyzeTransactions(parseResult.transactions);
-console.log('STEP 2 — Analytics');
-console.log(`  Total spend: ₹${analytics.totalSpend}`);
-console.log(`  Categories: ${Object.keys(analytics.categoryBreakdown).join(', ')}`);
-console.log(`  Top merchant: ${analytics.topMerchants[0]?.merchant} (₹${analytics.topMerchants[0]?.total})`);
+console.log('STEP 2 — Analytics Pipeline');
+console.log(`  Total spend: ₹${analytics.aggregates.totalSpend}`);
+console.log(`  Avg transaction: ₹${analytics.aggregates.averageTransaction}`);
+console.log(`  Categories breakdown: ${JSON.stringify(analytics.categoryBreakdown)}`);
+console.log(`  Top merchant: ${analytics.merchants[0]?.merchant} (₹${analytics.merchants[0]?.total})`);
 console.log(`  Weeks tracked: ${Object.keys(analytics.weeklySpending).length}\n`);
 
 // Step 3: Pattern Detection
 const patterns = detectPatterns(parseResult.transactions, analytics);
-console.log('STEP 3 — Pattern Detection');
-patterns.forEach((p) => console.log(`  [${p.type}] ${p.detail}`));
+console.log('STEP 3 — Pattern Detection (Fintech Signals)');
+patterns.forEach((p) => {
+  console.log(`  [${p.type}] [Severity: ${p.severity.toUpperCase()}] ${p.detail}`);
+});
 console.log();
 
 // Step 4+5: Insights with savings
 const insights = generateInsights(analytics, patterns);
-console.log('STEP 4+5 — Insights & Savings');
+console.log('STEP 4+5 — Actionable Insights & advisor recommendations');
 insights.forEach((i) => {
   console.log(`  📌 ${i.title}`);
-  console.log(`     Savings: ₹${i.savingsEstimate}`);
+  console.log(`     Advisor note: ${i.description.substring(0, 120)}...`);
 });
 console.log();
 
